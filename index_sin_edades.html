@@ -140,14 +140,6 @@
 
   .export-row{display:flex;flex-wrap:wrap;gap:12px;}
 
-  /* Age tabs (7/14/28 dias) */
-  .age-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
-  .age-tab{
-    background:var(--bg);border:2px solid var(--navy);color:var(--navy);
-    padding:8px 18px;border-radius:20px;cursor:pointer;font-size:14px;font-weight:600;
-  }
-  .age-tab.active{background:var(--navy);color:#fff;}
-
   @media (max-width:768px){
     .sidebar{transform:translateX(-100%);}
     .sidebar.show{transform:translateX(0);}
@@ -201,8 +193,7 @@
   <!-- MODULO 2: COMPRESION -->
   <section id="section-compresion" class="section">
     <div class="card">
-      <h2>Ingreso de datos — Compresión (MPa)</h2>
-      <div class="age-tabs" id="compresionAgeTabs"></div>
+      <h2>Ingreso de datos — Compresión a 28 días (MPa)</h2>
       <div id="compresionTableContainer">
         <p>Aplique una configuración de mezclas para generar la tabla.</p>
       </div>
@@ -212,8 +203,7 @@
   <!-- MODULO 3: FLEXION -->
   <section id="section-flexion" class="section">
     <div class="card">
-      <h2>Ingreso de datos — Flexión (MPa)</h2>
-      <div class="age-tabs" id="flexionAgeTabs"></div>
+      <h2>Ingreso de datos — Flexión a 28 días (MPa)</h2>
       <div id="flexionTableContainer">
         <p>Aplique una configuración de mezclas para generar la tabla.</p>
       </div>
@@ -223,11 +213,7 @@
   <!-- MODULO 4: GRAFICAS -->
   <section id="section-graficas" class="section">
     <div class="card">
-      <h3>Edad de ensayo</h3>
-      <div class="age-tabs" id="graficasAgeTabs"></div>
-    </div>
-    <div class="card">
-      <h3 id="tituloChartCompresionBar">Resistencia a compresión a 28 días — ASTM C39</h3>
+      <h3>Resistencia a compresión a 28 días — ASTM C39</h3>
       <div class="chart-container"><canvas id="chartCompresionBar"></canvas></div>
     </div>
     <div class="card">
@@ -235,20 +221,12 @@
       <div class="chart-container"><canvas id="chartCompresionDose"></canvas></div>
     </div>
     <div class="card">
-      <h3 id="tituloChartFlexionBar">Módulo de ruptura a 28 días — ASTM C78</h3>
+      <h3>Módulo de ruptura a 28 días — ASTM C78</h3>
       <div class="chart-container"><canvas id="chartFlexionBar"></canvas></div>
     </div>
     <div class="card">
       <h3>Curva dosis-respuesta — Flexión</h3>
       <div class="chart-container"><canvas id="chartFlexionDose"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>Evolución de la resistencia a compresión (7, 14 y 28 días)</h3>
-      <div class="chart-container"><canvas id="chartCompresionEvolucion"></canvas></div>
-    </div>
-    <div class="card">
-      <h3>Evolución del módulo de ruptura (7, 14 y 28 días)</h3>
-      <div class="chart-container"><canvas id="chartFlexionEvolucion"></canvas></div>
     </div>
     <div class="card">
       <h3>Comparación con literatura análoga</h3>
@@ -283,20 +261,12 @@
       </div>
     </div>
     <div class="card">
-      <h3>Edad de ensayo</h3>
-      <div class="age-tabs" id="estadisticosAgeTabs"></div>
-    </div>
-    <div class="card">
       <h3>Resumen — Compresión</h3>
       <div id="resumenCompresionContainer"><p>Sin datos.</p></div>
     </div>
     <div class="card">
       <h3>Resumen — Flexión</h3>
       <div id="resumenFlexionContainer"><p>Sin datos.</p></div>
-    </div>
-    <div class="card">
-      <h3>Evolución de medias por mezcla (7 / 14 / 28 días)</h3>
-      <div id="resumenEvolucionContainer"><p>Sin datos.</p></div>
     </div>
   </section>
 
@@ -395,18 +365,13 @@
 ============================================================ */
 window.appData = {
   niveles: [0],
-  compresion: {},   // { nivel: { 7:[r1,r2,r3], 14:[...], 28:[...] } }
-  flexion: {},      // { nivel: { 7:[r1,r2], 14:[...], 28:[...] } }
+  compresion: {},   // { nivel: [r1,r2,r3] }
+  flexion: {},      // { nivel: [r1,r2] }
   eficiencia: {}
 };
 
 const FC_DISENO = 28; // MPa
-const EDADES = [7, 14, 28];
 const charts = {};
-let activeEdadCompresion = 28;
-let activeEdadFlexion = 28;
-let activeEdadGraficas = 28;
-let activeEdadEstadisticos = 28;
 
 /* ============================================================
    UTILIDADES
@@ -425,11 +390,8 @@ function dataComplete(){
   for(const n of appData.niveles){
     const c = appData.compresion[n];
     const f = appData.flexion[n];
-    if(!c || !f) return false;
-    for(const e of EDADES){
-      if(!c[e] || c[e].some(v=>v===null||v===undefined||v==='')) return false;
-      if(!f[e] || f[e].some(v=>v===null||v===undefined||v==='')) return false;
-    }
+    if(!c || c.some(v=>v===null||v===undefined||v==='')) return false;
+    if(!f || f.some(v=>v===null||v===undefined||v==='')) return false;
   }
   return appData.niveles.length > 0;
 }
@@ -541,16 +503,10 @@ function applyConfig(){
   const newComp = {};
   const newFlex = {};
   appData.niveles.forEach(n=>{
-    const compEdades = {};
-    const flexEdades = {};
-    EDADES.forEach(e=>{
-      const oldC = appData.compresion[n] && appData.compresion[n][e];
-      const oldF = appData.flexion[n] && appData.flexion[n][e];
-      compEdades[e] = (oldC && oldC.length===3) ? oldC : [null,null,null];
-      flexEdades[e] = (oldF && oldF.length===2) ? oldF : [null,null];
-    });
-    newComp[n] = compEdades;
-    newFlex[n] = flexEdades;
+    newComp[n] = appData.compresion[n] && appData.compresion[n].length===3
+      ? appData.compresion[n] : [null,null,null];
+    newFlex[n] = appData.flexion[n] && appData.flexion[n].length===2
+      ? appData.flexion[n] : [null,null];
   });
   appData.compresion = newComp;
   appData.flexion = newFlex;
@@ -562,18 +518,18 @@ function applyConfig(){
 function loadExample(){
   appData.niveles = [0,5,10,15,20];
   appData.compresion = {
-    0:  { 7:[19.80,19.31,20.21], 14:[24.78,24.16,25.27], 28:[28.93,28.24,29.52] },
-    5:  { 7:[20.25,19.97,20.59], 14:[25.39,25.06,25.81], 28:[29.62,29.22,30.11] },
-    10: { 7:[21.34,20.91,21.59], 14:[26.72,26.24,27.04], 28:[31.19,30.60,31.58] },
-    15: { 7:[18.44,18.02,18.78], 14:[23.13,22.66,23.55], 28:[26.97,26.38,27.46] },
-    20: { 7:[16.63,16.96,16.36], 14:[20.85,21.27,20.49], 28:[24.32,24.81,23.93] }
+    0:  [28.93,28.24,29.52],
+    5:  [29.62,29.22,30.11],
+    10: [31.19,30.60,31.58],
+    15: [26.97,26.38,27.46],
+    20: [24.32,24.81,23.93]
   };
   appData.flexion = {
-    0:  { 7:[2.62,2.67], 14:[3.30,3.35], 28:[3.85,3.92] },
-    5:  { 7:[2.71,2.76], 14:[3.41,3.47], 28:[3.98,4.05] },
-    10: { 7:[2.87,2.85], 14:[3.61,3.58], 28:[4.21,4.18] },
-    15: { 7:[2.53,2.51],  14:[3.19,3.16], 28:[3.72,3.68] },
-    20: { 7:[2.35,2.39], 14:[2.96,3.01], 28:[3.45,3.51] }
+    0:  [3.85,3.92],
+    5:  [3.98,4.05],
+    10: [4.21,4.18],
+    15: [3.72,3.68],
+    20: [3.45,3.51]
   };
   renderNiveles();
   renderCompresionTable();
@@ -584,63 +540,46 @@ function loadExample(){
 /* ============================================================
    MODULO 2: COMPRESION
 ============================================================ */
-function renderAgeTabs(containerId, activeEdad, onClick){
-  const cont = document.getElementById(containerId);
-  cont.innerHTML = EDADES.map(e=>
-    `<button class="age-tab ${e===activeEdad?'active':''}" data-edad="${e}">${e} días</button>`
-  ).join('');
-  cont.querySelectorAll('.age-tab').forEach(btn=>{
-    btn.addEventListener('click', ()=> onClick(parseInt(btn.dataset.edad,10)));
-  });
-}
-
 function renderCompresionTable(){
-  renderAgeTabs('compresionAgeTabs', activeEdadCompresion, (edad)=>{
-    activeEdadCompresion = edad;
-    renderCompresionTable();
-  });
-
-  const edad = activeEdadCompresion;
   const cont = document.getElementById('compresionTableContainer');
   let html = `<table class="data-table"><thead><tr>
     <th>Mezcla (% CHV)</th><th>Réplica 1</th><th>Réplica 2</th><th>Réplica 3</th>
     <th>Media</th><th>Desv. Est.</th><th>CV%</th></tr></thead><tbody>`;
 
   appData.niveles.forEach(n=>{
-    if(!appData.compresion[n]) appData.compresion[n] = {};
-    const r = appData.compresion[n][edad] || [null,null,null];
-    appData.compresion[n][edad] = r;
+    const r = appData.compresion[n] || [null,null,null];
+    appData.compresion[n] = r;
     const rowClass = n === 0 ? 'patron-row' : '';
     html += `<tr class="${rowClass}"><td>${n}%</td>`;
     for(let i=0;i<3;i++){
       const val = (r[i]===null||r[i]===undefined) ? '' : r[i];
       html += `<td><input type="number" min="0" max="60" step="0.01" value="${val}"
-        oninput="updateCompresion(${n},${edad},${i},this.value)"></td>`;
+        oninput="updateCompresion(${n},${i},this.value)"></td>`;
     }
-    html += `<td id="c-${n}-${edad}-media">-</td>`;
-    html += `<td id="c-${n}-${edad}-desv">-</td>`;
-    html += `<td id="c-${n}-${edad}-cv">-</td>`;
+    html += `<td id="c-${n}-media">-</td>`;
+    html += `<td id="c-${n}-desv">-</td>`;
+    html += `<td id="c-${n}-cv">-</td>`;
     html += `</tr>`;
   });
   html += '</tbody></table>';
   cont.innerHTML = html;
 
-  appData.niveles.forEach(n => updateCompresionStats(n, edad));
+  appData.niveles.forEach(n => updateCompresionStats(n));
 }
 
-function updateCompresion(n, edad, idx, value){
-  appData.compresion[n][edad][idx] = value === '' ? null : parseFloat(value);
-  updateCompresionStats(n, edad);
+function updateCompresion(n, idx, value){
+  appData.compresion[n][idx] = value === '' ? null : parseFloat(value);
+  updateCompresionStats(n);
   if(document.getElementById('section-graficas').classList.contains('active')){
     updateCharts();
   }
 }
 
-function updateCompresionStats(n, edad){
-  const stats = calcStats(appData.compresion[n][edad], 3);
-  const mediaCell = document.getElementById(`c-${n}-${edad}-media`);
-  const desvCell = document.getElementById(`c-${n}-${edad}-desv`);
-  const cvCell = document.getElementById(`c-${n}-${edad}-cv`);
+function updateCompresionStats(n){
+  const stats = calcStats(appData.compresion[n], 3);
+  const mediaCell = document.getElementById(`c-${n}-media`);
+  const desvCell = document.getElementById(`c-${n}-desv`);
+  const cvCell = document.getElementById(`c-${n}-cv`);
   if(!mediaCell) return;
   if(stats){
     mediaCell.textContent = stats.media.toFixed(2);
@@ -659,52 +598,45 @@ function updateCompresionStats(n, edad){
    MODULO 3: FLEXION
 ============================================================ */
 function renderFlexionTable(){
-  renderAgeTabs('flexionAgeTabs', activeEdadFlexion, (edad)=>{
-    activeEdadFlexion = edad;
-    renderFlexionTable();
-  });
-
-  const edad = activeEdadFlexion;
   const cont = document.getElementById('flexionTableContainer');
   let html = `<table class="data-table"><thead><tr>
     <th>Mezcla (% CHV)</th><th>Réplica 1</th><th>Réplica 2</th>
     <th>Media</th><th>Desv. Est.</th><th>CV%</th></tr></thead><tbody>`;
 
   appData.niveles.forEach(n=>{
-    if(!appData.flexion[n]) appData.flexion[n] = {};
-    const r = appData.flexion[n][edad] || [null,null];
-    appData.flexion[n][edad] = r;
+    const r = appData.flexion[n] || [null,null];
+    appData.flexion[n] = r;
     const rowClass = n === 0 ? 'patron-row' : '';
     html += `<tr class="${rowClass}"><td>${n}%</td>`;
     for(let i=0;i<2;i++){
       const val = (r[i]===null||r[i]===undefined) ? '' : r[i];
       html += `<td><input type="number" min="0" max="20" step="0.01" value="${val}"
-        oninput="updateFlexion(${n},${edad},${i},this.value)"></td>`;
+        oninput="updateFlexion(${n},${i},this.value)"></td>`;
     }
-    html += `<td id="f-${n}-${edad}-media">-</td>`;
-    html += `<td id="f-${n}-${edad}-desv">-</td>`;
-    html += `<td id="f-${n}-${edad}-cv">-</td>`;
+    html += `<td id="f-${n}-media">-</td>`;
+    html += `<td id="f-${n}-desv">-</td>`;
+    html += `<td id="f-${n}-cv">-</td>`;
     html += `</tr>`;
   });
   html += '</tbody></table>';
   cont.innerHTML = html;
 
-  appData.niveles.forEach(n => updateFlexionStats(n, edad));
+  appData.niveles.forEach(n => updateFlexionStats(n));
 }
 
-function updateFlexion(n, edad, idx, value){
-  appData.flexion[n][edad][idx] = value === '' ? null : parseFloat(value);
-  updateFlexionStats(n, edad);
+function updateFlexion(n, idx, value){
+  appData.flexion[n][idx] = value === '' ? null : parseFloat(value);
+  updateFlexionStats(n);
   if(document.getElementById('section-graficas').classList.contains('active')){
     updateCharts();
   }
 }
 
-function updateFlexionStats(n, edad){
-  const stats = calcStats(appData.flexion[n][edad], 2);
-  const mediaCell = document.getElementById(`f-${n}-${edad}-media`);
-  const desvCell = document.getElementById(`f-${n}-${edad}-desv`);
-  const cvCell = document.getElementById(`f-${n}-${edad}-cv`);
+function updateFlexionStats(n){
+  const stats = calcStats(appData.flexion[n], 2);
+  const mediaCell = document.getElementById(`f-${n}-media`);
+  const desvCell = document.getElementById(`f-${n}-desv`);
+  const cvCell = document.getElementById(`f-${n}-cv`);
   if(!mediaCell) return;
   if(stats){
     mediaCell.textContent = stats.media.toFixed(2);
@@ -742,16 +674,16 @@ const barValueLabelsPlugin = {
   }
 };
 
-function getCompresionStatsArray(edad){
+function getCompresionStatsArray(){
   return appData.niveles.map(n=>{
-    const s = calcStats(appData.compresion[n][edad], 3);
+    const s = calcStats(appData.compresion[n], 3);
     return {nivel:n, media: s ? s.media : null, desv: s ? s.desv : null};
   });
 }
 
-function getFlexionStatsArray(edad){
+function getFlexionStatsArray(){
   return appData.niveles.map(n=>{
-    const s = calcStats(appData.flexion[n][edad], 2);
+    const s = calcStats(appData.flexion[n], 2);
     return {nivel:n, media: s ? s.media : null, desv: s ? s.desv : null};
   });
 }
@@ -762,19 +694,9 @@ function destroyChart(key){
 
 function updateCharts(){
   if(!dataComplete()) return;
-
-  renderAgeTabs('graficasAgeTabs', activeEdadGraficas, (edad)=>{
-    activeEdadGraficas = edad;
-    updateCharts();
-  });
-
-  const edad = activeEdadGraficas;
-  document.getElementById('tituloChartCompresionBar').textContent = `Resistencia a compresión a ${edad} días — ASTM C39`;
-  document.getElementById('tituloChartFlexionBar').textContent = `Módulo de ruptura a ${edad} días — ASTM C78`;
-
   const labels = appData.niveles.map(n=>n+'%');
-  const compStats = getCompresionStatsArray(edad);
-  const flexStats = getFlexionStatsArray(edad);
+  const compStats = getCompresionStatsArray();
+  const flexStats = getFlexionStatsArray();
 
   /* ---- GRAFICA 1: Barras compresion ---- */
   destroyChart('compBar');
@@ -953,81 +875,8 @@ function updateCharts(){
     }
   });
 
-  /* ---- GRAFICA EVOLUCION: Compresion (7-14-28 dias) ---- */
-  destroyChart('compEvol');
-  const evolLabels = EDADES.map(e=>e+' días');
-  const palette = ['#1C2B4A','#B8972A','#27AE60','#C0392B','#8E44AD','#16A085','#D35400','#2980B9'];
-  const ctxCE = document.getElementById('chartCompresionEvolucion').getContext('2d');
-  charts.compEvol = new Chart(ctxCE, {
-    type: 'line',
-    data: {
-      labels: evolLabels,
-      datasets: appData.niveles.map((n,i)=>{
-        const color = palette[i % palette.length];
-        return {
-          label: `${n}% CHV`,
-          data: EDADES.map(e=>{
-            const s = calcStats(appData.compresion[n][e], 3);
-            return s ? s.media : null;
-          }),
-          borderColor: color,
-          backgroundColor: color,
-          borderWidth: 2,
-          pointRadius: 4,
-          tension: 0.2,
-          fill: false
-        };
-      })
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } },
-      scales: {
-        y: { title: {display:true, text:'MPa'} },
-        x: { title: {display:true, text:'Edad de curado'} }
-      }
-    }
-  });
-
-  /* ---- GRAFICA EVOLUCION: Flexion (7-14-28 dias) ---- */
-  destroyChart('flexEvol');
-  const ctxFE = document.getElementById('chartFlexionEvolucion').getContext('2d');
-  charts.flexEvol = new Chart(ctxFE, {
-    type: 'line',
-    data: {
-      labels: evolLabels,
-      datasets: appData.niveles.map((n,i)=>{
-        const color = palette[i % palette.length];
-        return {
-          label: `${n}% CHV`,
-          data: EDADES.map(e=>{
-            const s = calcStats(appData.flexion[n][e], 2);
-            return s ? s.media : null;
-          }),
-          borderColor: color,
-          backgroundColor: color,
-          borderWidth: 2,
-          pointRadius: 4,
-          tension: 0.2,
-          fill: false
-        };
-      })
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } },
-      scales: {
-        y: { title: {display:true, text:'MPa'} },
-        x: { title: {display:true, text:'Edad de curado'} }
-      }
-    }
-  });
-
-  /* ---- GRAFICA 5: Comparacion con literatura (siempre a 28 dias) ---- */
+  /* ---- GRAFICA 5: Comparacion con literatura ---- */
   destroyChart('comparacion');
-  const compStats28 = getCompresionStatsArray(28);
   const yehualaw = {0:33.1, 5:34.5, 10:35.7, 15:32.0};
   const murugesh = {0:28.5, 10:31.2};
   const ctx5 = document.getElementById('chartComparacion').getContext('2d');
@@ -1038,7 +887,7 @@ function updateCharts(){
       datasets: [
         {
           label: 'Resultados propios CHV',
-          data: compStats28.map(s=> s.media!==null ? s.media : null),
+          data: compStats.map(s=> s.media!==null ? s.media : null),
           borderColor: '#1C2B4A',
           backgroundColor: '#1C2B4A',
           borderWidth: 3,
@@ -1089,7 +938,6 @@ function renderEstadisticos(){
   if(!dataComplete()){
     document.getElementById('resumenCompresionContainer').innerHTML = '<p>Complete los datos de compresión y flexión para ver los resultados.</p>';
     document.getElementById('resumenFlexionContainer').innerHTML = '<p>Complete los datos de compresión y flexión para ver los resultados.</p>';
-    document.getElementById('resumenEvolucionContainer').innerHTML = '<p>Complete los datos de compresión y flexión para ver los resultados.</p>';
     document.getElementById('indMezclaOptCompresion').textContent = '—';
     document.getElementById('indResistenciaMax').textContent = '—';
     document.getElementById('indMezclaOptFlexion').textContent = '—';
@@ -1097,22 +945,14 @@ function renderEstadisticos(){
     return;
   }
 
-  renderAgeTabs('estadisticosAgeTabs', activeEdadEstadisticos, (edad)=>{
-    activeEdadEstadisticos = edad;
-    renderEstadisticos();
-  });
-
-  const edad = activeEdadEstadisticos;
-  const compStats = getCompresionStatsArray(edad);
-  const flexStats = getFlexionStatsArray(edad);
+  const compStats = getCompresionStatsArray();
+  const flexStats = getFlexionStatsArray();
   const media0Comp = compStats.find(s=>s.nivel===0).media;
   const media0Flex = flexStats.find(s=>s.nivel===0).media;
 
-  // Indicadores (siempre referidos a 28 dias, edad de diseño)
-  const compStats28 = getCompresionStatsArray(28);
-  const flexStats28 = getFlexionStatsArray(28);
-  const compMax = compStats28.reduce((best,c)=> c.media > best.media ? c : best, compStats28[0]);
-  const flexMax = flexStats28.reduce((best,c)=> c.media > best.media ? c : best, flexStats28[0]);
+  // Indicadores
+  const compMax = compStats.reduce((best,c)=> c.media > best.media ? c : best, compStats[0]);
+  const flexMax = flexStats.reduce((best,c)=> c.media > best.media ? c : best, flexStats[0]);
   document.getElementById('indMezclaOptCompresion').textContent = `${compMax.nivel}% CHV`;
   document.getElementById('indResistenciaMax').textContent = `${compMax.media.toFixed(2)} MPa`;
   document.getElementById('indMezclaOptFlexion').textContent = `${flexMax.nivel}% CHV`;
@@ -1157,31 +997,6 @@ function renderEstadisticos(){
   });
   html2 += '</tbody></table>';
   document.getElementById('resumenFlexionContainer').innerHTML = html2;
-
-  // Tabla evolucion de medias (compresion y flexion) por edad
-  let html3 = `<table class="data-table"><thead><tr>
-    <th rowspan="2">Mezcla</th>
-    <th colspan="${EDADES.length}">Compresión — Media (MPa)</th>
-    <th colspan="${EDADES.length}">Flexión — Media (MPa)</th>
-    </tr><tr>`;
-  EDADES.forEach(e=> html3 += `<th>${e}d</th>`);
-  EDADES.forEach(e=> html3 += `<th>${e}d</th>`);
-  html3 += '</tr></thead><tbody>';
-  appData.niveles.forEach(n=>{
-    const rowClass = n===0 ? 'patron-row' : '';
-    html3 += `<tr class="${rowClass}"><td>${n}%</td>`;
-    EDADES.forEach(e=>{
-      const s = calcStats(appData.compresion[n][e], 3);
-      html3 += `<td>${s ? s.media.toFixed(2) : '-'}</td>`;
-    });
-    EDADES.forEach(e=>{
-      const s = calcStats(appData.flexion[n][e], 2);
-      html3 += `<td>${s ? s.media.toFixed(2) : '-'}</td>`;
-    });
-    html3 += '</tr>';
-  });
-  html3 += '</tbody></table>';
-  document.getElementById('resumenEvolucionContainer').innerHTML = html3;
 }
 
 /* ============================================================
@@ -1322,6 +1137,7 @@ function calcInversa(){
   document.getElementById('invFlowPerdida').textContent = `Pérdida estimada: ${perdidaEst.toFixed(2)} kg (${perdidaPct.toFixed(2)}%)`;
 }
 
+// Marcar cuando el usuario edita manualmente la eficiencia
 document.addEventListener('DOMContentLoaded', ()=>{
   const efManualEl = document.getElementById('eficienciaManualInput');
   efManualEl._userEdited = false;
@@ -1355,25 +1171,16 @@ function exportCompresionCSV(){
     alert('Complete todos los datos antes de exportar');
     return;
   }
-  let header = 'Mezcla(%)';
-  EDADES.forEach(e=> header += `,R1_${e}d,R2_${e}d,R3_${e}d,Media_${e}d,DesvEst_${e}d,CV%_${e}d,Delta_vs_patron_${e}d,Estado_${e}d`);
-  let csv = header + '\n';
-  const statsByEdad = {};
-  EDADES.forEach(e=> statsByEdad[e] = getCompresionStatsArray(e));
-  const media0ByEdad = {};
-  EDADES.forEach(e=> media0ByEdad[e] = statsByEdad[e].find(s=>s.nivel===0).media);
-
+  const compStats = getCompresionStatsArray();
+  const media0 = compStats.find(s=>s.nivel===0).media;
+  let csv = 'Mezcla(%),R1,R2,R3,Media,DesvEst,CV%,Delta_vs_patron,Estado\n';
   appData.niveles.forEach(n=>{
-    let row = `${n}`;
-    EDADES.forEach(e=>{
-      const r = appData.compresion[n][e];
-      const s = statsByEdad[e].find(x=>x.nivel===n);
-      const cv = (s.desv/s.media)*100;
-      const delta = ((s.media-media0ByEdad[e])/media0ByEdad[e])*100;
-      const estado = getEstado(s.media);
-      row += `,${r[0]},${r[1]},${r[2]},${s.media.toFixed(2)},${s.desv.toFixed(2)},${cv.toFixed(2)},${delta.toFixed(2)},${estado}`;
-    });
-    csv += row + '\n';
+    const r = appData.compresion[n];
+    const s = compStats.find(x=>x.nivel===n);
+    const cv = (s.desv/s.media)*100;
+    const delta = ((s.media-media0)/media0)*100;
+    const estado = getEstado(s.media);
+    csv += `${n},${r[0]},${r[1]},${r[2]},${s.media.toFixed(2)},${s.desv.toFixed(2)},${cv.toFixed(2)},${delta.toFixed(2)},${estado}\n`;
   });
   downloadFile('compresion_CHV.csv', csv, 'text/csv');
 }
@@ -1383,24 +1190,15 @@ function exportFlexionCSV(){
     alert('Complete todos los datos antes de exportar');
     return;
   }
-  let header = 'Mezcla(%)';
-  EDADES.forEach(e=> header += `,R1_${e}d,R2_${e}d,Media_${e}d,DesvEst_${e}d,CV%_${e}d,Delta_vs_patron_${e}d`);
-  let csv = header + '\n';
-  const statsByEdad = {};
-  EDADES.forEach(e=> statsByEdad[e] = getFlexionStatsArray(e));
-  const media0ByEdad = {};
-  EDADES.forEach(e=> media0ByEdad[e] = statsByEdad[e].find(s=>s.nivel===0).media);
-
+  const flexStats = getFlexionStatsArray();
+  const media0 = flexStats.find(s=>s.nivel===0).media;
+  let csv = 'Mezcla(%),R1,R2,Media,DesvEst,CV%,Delta_vs_patron\n';
   appData.niveles.forEach(n=>{
-    let row = `${n}`;
-    EDADES.forEach(e=>{
-      const r = appData.flexion[n][e];
-      const s = statsByEdad[e].find(x=>x.nivel===n);
-      const cv = (s.desv/s.media)*100;
-      const delta = ((s.media-media0ByEdad[e])/media0ByEdad[e])*100;
-      row += `,${r[0]},${r[1]},${s.media.toFixed(2)},${s.desv.toFixed(2)},${cv.toFixed(2)},${delta.toFixed(2)}`;
-    });
-    csv += row + '\n';
+    const r = appData.flexion[n];
+    const s = flexStats.find(x=>x.nivel===n);
+    const cv = (s.desv/s.media)*100;
+    const delta = ((s.media-media0)/media0)*100;
+    csv += `${n},${r[0]},${r[1]},${s.media.toFixed(2)},${s.desv.toFixed(2)},${cv.toFixed(2)},${delta.toFixed(2)}\n`;
   });
   downloadFile('flexion_CHV.csv', csv, 'text/csv');
 }
@@ -1423,45 +1221,39 @@ function exportResumenTXT(){
     alert('Complete todos los datos antes de exportar');
     return;
   }
+  const compStats = getCompresionStatsArray();
+  const flexStats = getFlexionStatsArray();
+  const media0Comp = compStats.find(s=>s.nivel===0).media;
+  const media0Flex = flexStats.find(s=>s.nivel===0).media;
+  const compMax = compStats.reduce((best,c)=> c.media > best.media ? c : best, compStats[0]);
+  const flexMax = flexStats.reduce((best,c)=> c.media > best.media ? c : best, flexStats[0]);
+  const deltaCompMax = ((compMax.media-media0Comp)/media0Comp)*100;
+  const deltaFlexMax = ((flexMax.media-media0Flex)/media0Flex)*100;
 
   let txt = 'RESUMEN DE RESULTADOS — TESIS CHV\n';
   txt += 'Universidad del Magdalena\n';
   txt += '================================\n\n';
-
-  EDADES.forEach(edad=>{
-    const compStats = getCompresionStatsArray(edad);
-    const flexStats = getFlexionStatsArray(edad);
-    const media0Comp = compStats.find(s=>s.nivel===0).media;
-    const media0Flex = flexStats.find(s=>s.nivel===0).media;
-    const compMax = compStats.reduce((best,c)=> c.media > best.media ? c : best, compStats[0]);
-    const flexMax = flexStats.reduce((best,c)=> c.media > best.media ? c : best, flexStats[0]);
-    const deltaCompMax = ((compMax.media-media0Comp)/media0Comp)*100;
-    const deltaFlexMax = ((flexMax.media-media0Flex)/media0Flex)*100;
-
-    txt += `=== EDAD: ${edad} DIAS ===\n\n`;
-    txt += `COMPRESION A ${edad} DIAS (ASTM C39)\n`;
-    txt += `Mezcla optima: ${compMax.nivel}% CHV con ${compMax.media.toFixed(2)} MPa\n`;
-    txt += `Variacion vs patron: ${deltaCompMax>=0?'+':''}${deltaCompMax.toFixed(2)}%\n\n`;
-    txt += 'Mezcla(%) | Media(MPa) | DesvEst | CV% | Delta vs patron | Estado\n';
-    compStats.forEach(s=>{
-      const cv = (s.desv/s.media)*100;
-      const delta = ((s.media-media0Comp)/media0Comp)*100;
-      txt += `${s.nivel}% | ${s.media.toFixed(2)} | ${s.desv.toFixed(2)} | ${cv.toFixed(2)}% | ${delta>=0?'+':''}${delta.toFixed(2)}% | ${getEstado(s.media)}\n`;
-    });
-
-    txt += `\nFLEXION A ${edad} DIAS (ASTM C78)\n`;
-    txt += `Mezcla optima: ${flexMax.nivel}% CHV con ${flexMax.media.toFixed(2)} MPa\n`;
-    txt += `Variacion vs patron: ${deltaFlexMax>=0?'+':''}${deltaFlexMax.toFixed(2)}%\n\n`;
-    txt += 'Mezcla(%) | Media(MPa) | DesvEst | CV% | Delta vs patron\n';
-    flexStats.forEach(s=>{
-      const cv = (s.desv/s.media)*100;
-      const delta = ((s.media-media0Flex)/media0Flex)*100;
-      txt += `${s.nivel}% | ${s.media.toFixed(2)} | ${s.desv.toFixed(2)} | ${cv.toFixed(2)}% | ${delta>=0?'+':''}${delta.toFixed(2)}%\n`;
-    });
-    txt += '\n';
+  txt += 'COMPRESION A 28 DIAS (ASTM C39)\n';
+  txt += `Mezcla optima: ${compMax.nivel}% CHV con ${compMax.media.toFixed(2)} MPa\n`;
+  txt += `Variacion vs patron: ${deltaCompMax>=0?'+':''}${deltaCompMax.toFixed(2)}%\n\n`;
+  txt += 'Mezcla(%) | Media(MPa) | DesvEst | CV% | Delta vs patron | Estado\n';
+  compStats.forEach(s=>{
+    const cv = (s.desv/s.media)*100;
+    const delta = ((s.media-media0Comp)/media0Comp)*100;
+    txt += `${s.nivel}% | ${s.media.toFixed(2)} | ${s.desv.toFixed(2)} | ${cv.toFixed(2)}% | ${delta>=0?'+':''}${delta.toFixed(2)}% | ${getEstado(s.media)}\n`;
   });
 
-  txt += 'EFICIENCIA DE APROVECHAMIENTO CHV\n';
+  txt += '\nFLEXION A 28 DIAS (ASTM C78)\n';
+  txt += `Mezcla optima: ${flexMax.nivel}% CHV con ${flexMax.media.toFixed(2)} MPa\n`;
+  txt += `Variacion vs patron: ${deltaFlexMax>=0?'+':''}${deltaFlexMax.toFixed(2)}%\n\n`;
+  txt += 'Mezcla(%) | Media(MPa) | DesvEst | CV% | Delta vs patron\n';
+  flexStats.forEach(s=>{
+    const cv = (s.desv/s.media)*100;
+    const delta = ((s.media-media0Flex)/media0Flex)*100;
+    txt += `${s.nivel}% | ${s.media.toFixed(2)} | ${s.desv.toFixed(2)} | ${cv.toFixed(2)}% | ${delta>=0?'+':''}${delta.toFixed(2)}%\n`;
+  });
+
+  txt += '\nEFICIENCIA DE APROVECHAMIENTO CHV\n';
   const e = appData.eficiencia || {};
   if(e.biomasa !== null && e.biomasa !== undefined && e.ceniza !== null && e.ceniza !== undefined){
     let clasificacion = e.eficiencia>=15 ? 'Alta' : (e.eficiencia>=8 ? 'Moderada' : 'Baja');
