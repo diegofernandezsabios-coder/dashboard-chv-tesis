@@ -136,11 +136,6 @@
   .flow-arrow{font-size:36px;color:#888;}
   .flow-loss{text-align:center;color:var(--red);font-size:13px;width:100%;margin-top:-10px;}
 
-  .suf-box{padding:18px;border-radius:8px;margin-top:20px;font-size:15px;line-height:1.6;}
-  .suf-ok{background:#d5f5e3;}
-  .suf-bad{background:#fdedec;}
-  .suf-empty{background:#eee;color:#555;}
-
   .ref-note{font-size:12px;color:#888;margin-top:10px;}
 
   .export-row{display:flex;flex-wrap:wrap;gap:12px;}
@@ -345,10 +340,37 @@
       </div>
 
       <hr>
-      <h3>Verificación de suficiencia</h3>
-      <label for="requeridaInput">CHV útil requerida para todos los especímenes (kg)</label>
-      <input type="number" id="requeridaInput" min="0" step="0.01" placeholder="ej: 13.38">
-      <div class="suf-box suf-empty" id="suficienciaBox">Ingrese los datos para verificar suficiencia</div>
+      <h3>Calculadora inversa — Biomasa necesaria</h3>
+      <p style="font-size:13px;color:#555;">Según tu diseño de mezcla, ¿cuánta ceniza CHV necesitas? Esta herramienta calcula la cantidad de Hydrilla verticillata seca que debes recolectar, considerando el porcentaje de eficiencia (o pérdida) del proceso de calcinación.</p>
+      <div class="eficiencia-grid">
+        <div>
+          <label for="cenizaObjetivoInput">Ceniza CHV requerida por diseño de mezcla (kg)</label>
+          <input type="number" id="cenizaObjetivoInput" min="0.01" step="0.01" placeholder="ej: 13.38">
+        </div>
+        <div>
+          <label for="eficienciaManualInput">Eficiencia de calcinación (%)</label>
+          <input type="number" id="eficienciaManualInput" min="0.1" max="100" step="0.01" placeholder="auto">
+          <div style="font-size:12px;color:#888;margin-top:4px;">Se autocompleta con la eficiencia calculada arriba. Puedes editarlo manualmente.</div>
+        </div>
+      </div>
+      <div class="eficiencia-result" id="inversaResult" style="margin-top:16px;">
+        <div class="pct" id="inversaBiomasa">—</div>
+        <div id="inversaTexto1">Ingrese la ceniza requerida para calcular la biomasa necesaria.</div>
+        <div id="inversaTexto2"></div>
+      </div>
+      <div class="flow-container" id="inversaFlow" style="display:none;">
+        <div class="flow-node ceniza">
+          <div>CENIZA REQUERIDA</div>
+          <div class="big" id="invFlowCeniza">— kg</div>
+        </div>
+        <div class="flow-arrow">←</div>
+        <div class="flow-node biomasa">
+          <div>BIOMASA SECA NECESARIA</div>
+          <div class="big" id="invFlowBiomasa">— kg</div>
+        </div>
+        <div class="flow-loss" id="invFlowPerdida">Pérdida estimada: — kg (—%)</div>
+      </div>
+      <p class="ref-note">Fórmula: Biomasa necesaria = Ceniza requerida ÷ (Eficiencia% ÷ 100). Se recomienda agregar un margen de seguridad del 10–20% sobre el valor calculado.</p>
     </div>
   </section>
 
@@ -1168,18 +1190,17 @@ function renderEstadisticos(){
 function bindEficiencia(){
   document.getElementById('biomasaInput').addEventListener('input', calcEficiencia);
   document.getElementById('cenizaInput').addEventListener('input', calcEficiencia);
-  document.getElementById('requeridaInput').addEventListener('input', calcEficiencia);
+  document.getElementById('cenizaObjetivoInput').addEventListener('input', calcInversa);
+  document.getElementById('eficienciaManualInput').addEventListener('input', calcInversa);
 }
 
 function calcEficiencia(){
   const biomasaEl = document.getElementById('biomasaInput');
   const cenizaEl = document.getElementById('cenizaInput');
-  const requeridaEl = document.getElementById('requeridaInput');
   const cenizaError = document.getElementById('cenizaError');
 
   const biomasa = parseFloat(biomasaEl.value);
   const ceniza = parseFloat(cenizaEl.value);
-  const requerida = parseFloat(requeridaEl.value);
 
   // Validacion ceniza <= biomasa
   let cenizaInvalid = false;
@@ -1244,25 +1265,11 @@ function calcEficiencia(){
     flowPerdida.textContent = 'Pérdida: — kg (—%)';
   }
 
-  // Verificacion de suficiencia
-  const sufBox = document.getElementById('suficienciaBox');
-  if(!isNaN(ceniza) && !isNaN(requerida) && !cenizaInvalid){
-    if(ceniza >= requerida){
-      const excedente = ceniza - requerida;
-      sufBox.className = 'suf-box suf-ok';
-      sufBox.innerHTML = `✅ <strong>Material suficiente</strong><br>
-        Disponible: ${ceniza.toFixed(2)} kg | Requerido: ${requerida.toFixed(2)} kg<br>
-        Excedente: ${excedente.toFixed(2)} kg`;
-    } else {
-      const deficit = requerida - ceniza;
-      sufBox.className = 'suf-box suf-bad';
-      sufBox.innerHTML = `❌ <strong>Material insuficiente</strong><br>
-        Disponible: ${ceniza.toFixed(2)} kg | Requerido: ${requerida.toFixed(2)} kg<br>
-        Déficit: ${deficit.toFixed(2)} kg`;
-    }
-  } else {
-    sufBox.className = 'suf-box suf-empty';
-    sufBox.textContent = 'Ingrese los datos para verificar suficiencia';
+  // Sincronizar eficiencia calculada con el input manual de la calculadora inversa
+  const efManualEl = document.getElementById('eficienciaManualInput');
+  if(eficiencia !== null && !efManualEl._userEdited){
+    efManualEl.value = eficiencia.toFixed(2);
+    calcInversa();
   }
 
   // Guardar en estado global
@@ -1270,10 +1277,56 @@ function calcEficiencia(){
     biomasa: isNaN(biomasa) ? null : biomasa,
     ceniza: isNaN(ceniza) ? null : ceniza,
     eficiencia: eficiencia,
-    requerida: isNaN(requerida) ? null : requerida,
     cenizaInvalid
   };
 }
+
+/* ============================================================
+   CALCULADORA INVERSA — BIOMASA NECESARIA
+============================================================ */
+function calcInversa(){
+  const cenizaObj = parseFloat(document.getElementById('cenizaObjetivoInput').value);
+  const efManualEl = document.getElementById('eficienciaManualInput');
+  const efVal = parseFloat(efManualEl.value);
+
+  const resultEl = document.getElementById('inversaResult');
+  const biomasaEl = document.getElementById('inversaBiomasa');
+  const texto1 = document.getElementById('inversaTexto1');
+  const texto2 = document.getElementById('inversaTexto2');
+  const flowContainer = document.getElementById('inversaFlow');
+
+  if(isNaN(cenizaObj) || isNaN(efVal) || efVal <= 0 || cenizaObj <= 0){
+    biomasaEl.textContent = '—';
+    biomasaEl.style.color = '#1C2B4A';
+    texto1.textContent = 'Ingrese la ceniza requerida para calcular la biomasa necesaria.';
+    texto2.textContent = '';
+    resultEl.style.background = 'transparent';
+    flowContainer.style.display = 'none';
+    return;
+  }
+
+  const biomasaNecesaria = cenizaObj / (efVal / 100);
+  const perdidaEst = biomasaNecesaria - cenizaObj;
+  const perdidaPct = 100 - efVal;
+  const biomasaConMargen = biomasaNecesaria * 1.15;
+
+  biomasaEl.textContent = biomasaNecesaria.toFixed(2) + ' kg';
+  biomasaEl.style.color = '#1C2B4A';
+  texto1.textContent = `Para obtener ${cenizaObj.toFixed(2)} kg de ceniza CHV con ${efVal.toFixed(2)}% de eficiencia, necesitas recolectar ${biomasaNecesaria.toFixed(2)} kg de Hydrilla verticillata seca.`;
+  texto2.textContent = `Con margen de seguridad (+15%): ${biomasaConMargen.toFixed(2)} kg`;
+  resultEl.style.background = '#eaf2f8';
+
+  flowContainer.style.display = 'flex';
+  document.getElementById('invFlowCeniza').textContent = cenizaObj.toFixed(2) + ' kg';
+  document.getElementById('invFlowBiomasa').textContent = biomasaNecesaria.toFixed(2) + ' kg';
+  document.getElementById('invFlowPerdida').textContent = `Pérdida estimada: ${perdidaEst.toFixed(2)} kg (${perdidaPct.toFixed(2)}%)`;
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const efManualEl = document.getElementById('eficienciaManualInput');
+  efManualEl._userEdited = false;
+  efManualEl.addEventListener('focus', ()=>{ efManualEl._userEdited = true; });
+});
 
 /* ============================================================
    MODULO 7: EXPORTAR
@@ -1360,16 +1413,8 @@ function exportEficienciaCSV(){
   }
   const eficienciaPct = e.eficiencia.toFixed(2);
   const relacion = (e.biomasa/e.ceniza).toFixed(2);
-  let resultado = '';
-  if(e.requerida !== null && e.requerida !== undefined){
-    resultado = e.ceniza >= e.requerida
-      ? `Suficiente (excedente ${(e.ceniza - e.requerida).toFixed(2)} kg)`
-      : `Insuficiente (deficit ${(e.requerida - e.ceniza).toFixed(2)} kg)`;
-  } else {
-    resultado = 'No evaluado';
-  }
-  let csv = 'Biomasa_seca_kg,Ceniza_obtenida_kg,Eficiencia_%,Relacion_kg_biomasa_por_kg_ceniza,CHV_requerida_kg,Resultado_suficiencia\n';
-  csv += `${e.biomasa},${e.ceniza},${eficienciaPct},${relacion},${e.requerida ?? ''},${resultado}\n`;
+  let csv = 'Biomasa_seca_kg,Ceniza_obtenida_kg,Eficiencia_%,Relacion_kg_biomasa_por_kg_ceniza\n';
+  csv += `${e.biomasa},${e.ceniza},${eficienciaPct},${relacion}\n`;
   downloadFile('eficiencia_CHV.csv', csv, 'text/csv');
 }
 
