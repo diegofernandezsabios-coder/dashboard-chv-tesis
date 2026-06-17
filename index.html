@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard CHV — Análisis Experimental</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
 <style>
   :root{
     --navy:#1C2B4A;
@@ -383,6 +384,7 @@
         <button class="btn-primary" id="exportFlexionBtn">Exportar CSV Flexión</button>
         <button class="btn-primary" id="exportEficienciaBtn">Exportar CSV Eficiencia</button>
         <button class="btn-secondary" id="exportResumenBtn">Exportar resumen TXT</button>
+        <button class="btn-secondary" id="exportPDFBtn" style="background:#C0392B;">Exportar Informe PDF</button>
       </div>
     </div>
   </section>
@@ -1348,6 +1350,7 @@ function bindExport(){
   document.getElementById('exportFlexionBtn').addEventListener('click', exportFlexionCSV);
   document.getElementById('exportEficienciaBtn').addEventListener('click', exportEficienciaCSV);
   document.getElementById('exportResumenBtn').addEventListener('click', exportResumenTXT);
+  document.getElementById('exportPDFBtn').addEventListener('click', exportPDF);
 }
 
 function exportCompresionCSV(){
@@ -1474,6 +1477,698 @@ function exportResumenTXT(){
   }
 
   downloadFile('resumen_resultados.txt', txt, 'text/plain');
+}
+
+/* ============================================================
+   MODULO 8: EXPORTAR INFORME PDF (formato LaTeX)
+============================================================ */
+async function exportPDF(){
+  if(!dataComplete()){
+    alert('Complete todos los datos antes de exportar');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'letter' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const ML = 25, MR = 25, MT = 30, MB = 25;
+  const CW = W - ML - MR;
+  let y = MT;
+
+  const NAVY = [28, 43, 74];
+  const GOLD = [184, 151, 42];
+  const RED  = [192, 57, 43];
+  const GREEN = [39, 174, 96];
+  const BLACK = [0, 0, 0];
+  const GRAY  = [100, 100, 100];
+  const LGRAY = [200, 200, 200];
+
+  function setFont(style, size, color){
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    doc.setTextColor(...(color || BLACK));
+  }
+
+  function hrLine(yPos, color){
+    doc.setDrawColor(...(color || NAVY));
+    doc.setLineWidth(0.6);
+    doc.line(ML, yPos, W - MR, yPos);
+  }
+
+  function thinLine(yPos){
+    doc.setDrawColor(...LGRAY);
+    doc.setLineWidth(0.3);
+    doc.line(ML, yPos, W - MR, yPos);
+  }
+
+  function checkPage(need){
+    if(y + need > H - MB){
+      addFooter();
+      doc.addPage();
+      y = MT;
+      return true;
+    }
+    return false;
+  }
+
+  let pageNum = 0;
+  function addFooter(){
+    pageNum++;
+    doc.setDrawColor(...LGRAY);
+    doc.setLineWidth(0.3);
+    doc.line(ML, H - 18, W - MR, H - 18);
+    setFont('normal', 8, GRAY);
+    doc.text('Dashboard CHV — Universidad del Magdalena', ML, H - 13);
+    doc.text(String(pageNum), W - MR, H - 13, {align:'right'});
+  }
+
+  function sectionTitle(text){
+    checkPage(18);
+    y += 6;
+    hrLine(y, NAVY);
+    y += 7;
+    setFont('bold', 14, NAVY);
+    doc.text(text, ML, y);
+    y += 3;
+    hrLine(y, NAVY);
+    y += 10;
+  }
+
+  function subSectionTitle(text){
+    checkPage(14);
+    y += 4;
+    setFont('bold', 11, NAVY);
+    doc.text(text, ML, y);
+    y += 2;
+    thinLine(y);
+    y += 8;
+  }
+
+  function paragraph(text, indent){
+    setFont('normal', 10, BLACK);
+    const lines = doc.splitTextToSize(text, CW - (indent||0));
+    lines.forEach(line =>{
+      checkPage(6);
+      doc.text(line, ML + (indent||0), y);
+      y += 5;
+    });
+    y += 3;
+  }
+
+  function drawTable(headers, rows, colWidths){
+    const rowH = 7;
+    const totalW = colWidths.reduce((a,b)=>a+b, 0);
+
+    checkPage(rowH * 2 + 4);
+    doc.setFillColor(...NAVY);
+    doc.rect(ML, y - 5, totalW, rowH, 'F');
+    setFont('bold', 8, [255,255,255]);
+    let x = ML;
+    headers.forEach((h, i) => {
+      doc.text(h, x + colWidths[i]/2, y - 1, {align:'center'});
+      x += colWidths[i];
+    });
+    y += rowH - 5;
+
+    rows.forEach((row, ri) => {
+      checkPage(rowH);
+      if(ri % 2 === 0){
+        doc.setFillColor(245, 246, 248);
+        doc.rect(ML, y - 4.5, totalW, rowH, 'F');
+      }
+      if(row._patron){
+        doc.setFillColor(230, 235, 245);
+        doc.rect(ML, y - 4.5, totalW, rowH, 'F');
+      }
+      setFont('normal', 8, BLACK);
+      x = ML;
+      row.cells.forEach((cell, ci) => {
+        const cellColor = cell.color || BLACK;
+        setFont(cell.bold ? 'bold' : 'normal', 8, cellColor);
+        doc.text(String(cell.text), x + colWidths[ci]/2, y, {align:'center'});
+        x += colWidths[ci];
+      });
+      y += rowH;
+    });
+    y += 4;
+  }
+
+  async function renderChartToImage(chartConfig, width, height){
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width * 2;
+    offscreen.height = height * 2;
+    offscreen.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+    document.body.appendChild(offscreen);
+
+    const ctx = offscreen.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+
+    const chart = new Chart(ctx, {
+      ...chartConfig,
+      options: {
+        ...chartConfig.options,
+        responsive: false,
+        animation: false,
+        devicePixelRatio: 2
+      }
+    });
+
+    await new Promise(r => setTimeout(r, 100));
+    const img = offscreen.toDataURL('image/png', 1.0);
+    chart.destroy();
+    document.body.removeChild(offscreen);
+    return img;
+  }
+
+  // ========== PORTADA ==========
+  y = 60;
+  hrLine(y, NAVY);
+  doc.setLineWidth(1.2);
+  doc.setDrawColor(...NAVY);
+  doc.line(ML, y, W - MR, y);
+  y += 20;
+  setFont('bold', 24, NAVY);
+  doc.text('Informe de Resultados', W/2, y, {align:'center'});
+  y += 12;
+  setFont('normal', 16, NAVY);
+  doc.text('Análisis Experimental — CHV', W/2, y, {align:'center'});
+  y += 10;
+  setFont('normal', 12, GOLD);
+  doc.text('Ceniza de Hydrilla verticillata como', W/2, y, {align:'center'});
+  y += 6;
+  doc.text('sustitución parcial de cemento Portland', W/2, y, {align:'center'});
+  y += 14;
+  doc.setLineWidth(1.2);
+  doc.setDrawColor(...NAVY);
+  doc.line(ML, y, W - MR, y);
+
+  y += 20;
+  setFont('normal', 11, GRAY);
+  doc.text('Universidad del Magdalena', W/2, y, {align:'center'});
+  y += 6;
+  doc.text('Programa de Ingeniería Civil', W/2, y, {align:'center'});
+  y += 12;
+  setFont('normal', 10, GRAY);
+  const fecha = new Date().toLocaleDateString('es-CO', {year:'numeric', month:'long', day:'numeric'});
+  doc.text(`Fecha de generación: ${fecha}`, W/2, y, {align:'center'});
+  y += 8;
+
+  const nivelesStr = appData.niveles.map(n => n + '%').join(', ');
+  doc.text(`Niveles de sustitución: ${nivelesStr}`, W/2, y, {align:'center'});
+
+  addFooter();
+  doc.addPage();
+  y = MT;
+
+  // ========== INTRODUCCION ==========
+  sectionTitle('1. Introducción');
+
+  paragraph('El presente informe recopila los resultados del análisis experimental de resistencia mecánica de mezclas de concreto con sustitución parcial de cemento Portland por ceniza de Hydrilla verticillata (CHV). Se evaluaron ' + appData.niveles.length + ' niveles de sustitución (' + nivelesStr + ') en tres edades de curado (7, 14 y 28 días).');
+
+  paragraph('Los ensayos se realizaron conforme a las normas ASTM C39 (resistencia a compresión) y ASTM C78 (módulo de ruptura por flexión). La resistencia de diseño de referencia es f\'c = 28 MPa.');
+
+  paragraph('El informe se estructura de la siguiente manera: (i) resultados de compresión y flexión por cada edad de ensayo, incluyendo tablas estadísticas y curvas dosis-respuesta; (ii) gráficas de evolución de la resistencia a lo largo del tiempo; (iii) análisis de eficiencia de aprovechamiento de la biomasa; y (iv) resumen con la dosis óptima de sustitución y conclusiones principales.');
+
+  // ========== POR CADA EDAD ==========
+  const compStats28All = getCompresionStatsArray(28);
+  const flexStats28All = getFlexionStatsArray(28);
+  const imgW = CW;
+  const imgH = CW * 300/560;
+
+  for(let ei = 0; ei < EDADES.length; ei++){
+    const edad = EDADES[ei];
+
+    sectionTitle(`2.${ei+1}. Resultados a ${edad} días`);
+
+    const compStats = getCompresionStatsArray(edad);
+    const flexStats = getFlexionStatsArray(edad);
+    const media0Comp = compStats.find(s=>s.nivel===0).media;
+    const media0Flex = flexStats.find(s=>s.nivel===0).media;
+
+    // Tabla compresion
+    subSectionTitle(`Resistencia a compresión — ${edad} días (ASTM C39)`);
+    const compColW = [22, 22, 22, 22, 22, 18, 22, 22];
+    const compTotalW = compColW.reduce((a,b)=>a+b,0);
+    const compScale = CW / compTotalW;
+    const compCols = compColW.map(w => w * compScale);
+
+    const compHeaders = ['Mezcla','R1','R2','R3','Media','Desv.','CV%','Estado'];
+    const compRows = compStats.map(s => {
+      const cv = (s.desv/s.media)*100;
+      const delta = ((s.media - media0Comp)/media0Comp)*100;
+      const estado = getEstado(s.media);
+      const r = appData.compresion[s.nivel][edad];
+      return {
+        _patron: s.nivel === 0,
+        cells: [
+          {text: s.nivel + '%', bold: s.nivel===0},
+          {text: r[0].toFixed ? Number(r[0]).toFixed(2) : r[0]},
+          {text: r[1].toFixed ? Number(r[1]).toFixed(2) : r[1]},
+          {text: r[2].toFixed ? Number(r[2]).toFixed(2) : r[2]},
+          {text: s.media.toFixed(2), bold: true},
+          {text: s.desv.toFixed(2)},
+          {text: cv.toFixed(1) + '%', color: cv > 10 ? RED : BLACK},
+          {text: estado, color: estado === 'CUMPLE' ? GREEN : (estado === 'LIMITE' ? GOLD : RED)}
+        ]
+      };
+    });
+    drawTable(compHeaders, compRows, compCols);
+
+    // Chart 1: Barras compresion
+    checkPage(80);
+    const chartBarCompConfig = {
+      type: 'bar',
+      data: {
+        labels: appData.niveles.map(n=>n+'%'),
+        datasets: [
+          {
+            label: 'Resistencia media (MPa)',
+            data: compStats.map(s=>s.media),
+            backgroundColor: '#1C2B4A'
+          },
+          {
+            label: "f'c diseño = 28 MPa",
+            data: appData.niveles.map(()=>FC_DISENO),
+            type: 'line',
+            borderColor: '#C0392B',
+            borderDash: [6,4],
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom' } },
+        scales: { y: { title: {display:true, text:'MPa'}, beginAtZero:false } }
+      },
+      plugins: [barValueLabelsPlugin]
+    };
+    const imgBarComp = await renderChartToImage(chartBarCompConfig, 560, 300);
+    checkPage(imgH + 10);
+    setFont('italic', 9, GRAY);
+    doc.text(`Figura ${ei*4+1}. Resistencia a compresión a ${edad} días — ASTM C39`, ML, y);
+    y += 4;
+    doc.addImage(imgBarComp, 'PNG', ML, y, imgW, imgH);
+    y += imgH + 8;
+
+    // Chart 2: Dosis-respuesta compresion
+    checkPage(80);
+    const compMaxIdx = compStats.reduce((best,c,i,arr)=> c.media > arr[best].media ? i : best, 0);
+    const chartDoseCompConfig = {
+      type: 'line',
+      data: {
+        labels: appData.niveles.map(n=>n+'%'),
+        datasets: [
+          {
+            label: 'Media + Desv',
+            data: compStats.map(s=>s.media + s.desv),
+            borderWidth: 0, pointRadius: 0, fill: '+1',
+            backgroundColor: 'rgba(28,43,74,0.12)'
+          },
+          {
+            label: 'Media - Desv',
+            data: compStats.map(s=>s.media - s.desv),
+            borderWidth: 0, pointRadius: 0, fill: false
+          },
+          {
+            label: 'Resistencia media',
+            data: compStats.map(s=>s.media),
+            borderColor: '#1C2B4A', backgroundColor: '#1C2B4A',
+            borderWidth: 3, pointRadius: 5, fill: false, tension: 0.2
+          },
+          {
+            label: 'Óptimo',
+            data: compStats.map((s,i)=> i===compMaxIdx ? s.media : null),
+            showLine: false, pointStyle: 'star', pointRadius: 10,
+            backgroundColor: '#B8972A', borderColor: '#B8972A'
+          },
+          {
+            label: "f'c diseño = 28 MPa",
+            data: appData.niveles.map(()=>FC_DISENO),
+            borderColor: '#C0392B', borderDash: [6,4], borderWidth: 2,
+            pointRadius: 0, fill: false
+          }
+        ]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels:{ filter: (item)=> item.text!=='Media + Desv' && item.text!=='Media - Desv' } } },
+        scales: { y: { title: {display:true, text:'MPa'} } }
+      }
+    };
+    const imgDoseComp = await renderChartToImage(chartDoseCompConfig, 560, 300);
+    checkPage(imgH + 10);
+    setFont('italic', 9, GRAY);
+    doc.text(`Figura ${ei*4+2}. Curva dosis-respuesta — Compresión a ${edad} días`, ML, y);
+    y += 4;
+    doc.addImage(imgDoseComp, 'PNG', ML, y, imgW, imgH);
+    y += imgH + 8;
+
+    // Tabla flexion
+    subSectionTitle(`Módulo de ruptura — ${edad} días (ASTM C78)`);
+    const flexColW = [26, 26, 26, 26, 22, 20, 26];
+    const flexTotalW = flexColW.reduce((a,b)=>a+b,0);
+    const flexScale = CW / flexTotalW;
+    const flexCols = flexColW.map(w => w * flexScale);
+
+    const flexHeaders = ['Mezcla','R1','R2','Media','Desv.','CV%','Δ Patrón'];
+    const flexRows = flexStats.map(s => {
+      const cv = (s.desv/s.media)*100;
+      const delta = ((s.media - media0Flex)/media0Flex)*100;
+      const r = appData.flexion[s.nivel][edad];
+      return {
+        _patron: s.nivel === 0,
+        cells: [
+          {text: s.nivel + '%', bold: s.nivel===0},
+          {text: Number(r[0]).toFixed(2)},
+          {text: Number(r[1]).toFixed(2)},
+          {text: s.media.toFixed(2), bold: true},
+          {text: s.desv.toFixed(2)},
+          {text: cv.toFixed(1) + '%', color: cv > 10 ? RED : BLACK},
+          {text: (delta>=0?'+':'') + delta.toFixed(2) + '%', color: delta >= 0 ? GREEN : RED}
+        ]
+      };
+    });
+    drawTable(flexHeaders, flexRows, flexCols);
+
+    // Chart 3: Barras flexion
+    checkPage(80);
+    const chartBarFlexConfig = {
+      type: 'bar',
+      data: {
+        labels: appData.niveles.map(n=>n+'%'),
+        datasets: [{
+          label: 'Módulo de ruptura (MPa)',
+          data: flexStats.map(s=>s.media),
+          backgroundColor: '#B8972A'
+        }]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom' } },
+        scales: { y: { title: {display:true, text:'MPa'} } }
+      },
+      plugins: [barValueLabelsPlugin]
+    };
+    const imgBarFlex = await renderChartToImage(chartBarFlexConfig, 560, 300);
+    checkPage(imgH + 10);
+    setFont('italic', 9, GRAY);
+    doc.text(`Figura ${ei*4+3}. Módulo de ruptura a ${edad} días — ASTM C78`, ML, y);
+    y += 4;
+    doc.addImage(imgBarFlex, 'PNG', ML, y, imgW, imgH);
+    y += imgH + 8;
+
+    // Chart 4: Dosis-respuesta flexion
+    checkPage(80);
+    const flexMaxIdx = flexStats.reduce((best,c,i,arr)=> c.media > arr[best].media ? i : best, 0);
+    const chartDoseFlexConfig = {
+      type: 'line',
+      data: {
+        labels: appData.niveles.map(n=>n+'%'),
+        datasets: [
+          {
+            label: 'Media + Desv',
+            data: flexStats.map(s=>s.media + s.desv),
+            borderWidth: 0, pointRadius: 0, fill: '+1',
+            backgroundColor: 'rgba(184,151,42,0.15)'
+          },
+          {
+            label: 'Media - Desv',
+            data: flexStats.map(s=>s.media - s.desv),
+            borderWidth: 0, pointRadius: 0, fill: false
+          },
+          {
+            label: 'Módulo de ruptura medio',
+            data: flexStats.map(s=>s.media),
+            borderColor: '#B8972A', backgroundColor: '#B8972A',
+            borderWidth: 3, pointRadius: 5, fill: false, tension: 0.2
+          },
+          {
+            label: 'Óptimo',
+            data: flexStats.map((s,i)=> i===flexMaxIdx ? s.media : null),
+            showLine: false, pointStyle: 'star', pointRadius: 10,
+            backgroundColor: '#1C2B4A', borderColor: '#1C2B4A'
+          }
+        ]
+      },
+      options: {
+        plugins: { legend: { position: 'bottom', labels:{ filter: (item)=> item.text!=='Media + Desv' && item.text!=='Media - Desv' } } },
+        scales: { y: { title: {display:true, text:'MPa'} } }
+      }
+    };
+    const imgDoseFlex = await renderChartToImage(chartDoseFlexConfig, 560, 300);
+    checkPage(imgH + 10);
+    setFont('italic', 9, GRAY);
+    doc.text(`Figura ${ei*4+4}. Curva dosis-respuesta — Flexión a ${edad} días`, ML, y);
+    y += 4;
+    doc.addImage(imgDoseFlex, 'PNG', ML, y, imgW, imgH);
+    y += imgH + 8;
+  }
+
+  // ========== EVOLUCION ==========
+  const figOffset = EDADES.length * 4;
+
+  sectionTitle('3. Evolución de la resistencia');
+
+  paragraph('Las siguientes gráficas muestran la evolución de la resistencia mecánica a lo largo de las tres edades de curado evaluadas (7, 14 y 28 días), permitiendo identificar el comportamiento de ganancia de resistencia de cada nivel de sustitución.');
+
+  // Chart: Evolucion compresion
+  subSectionTitle('Evolución de la resistencia a compresión (7, 14 y 28 días)');
+  const evolLabels = EDADES.map(e=>e+' días');
+  const palette = ['#1C2B4A','#B8972A','#27AE60','#C0392B','#8E44AD','#16A085','#D35400','#2980B9'];
+  const chartEvolCompConfig = {
+    type: 'line',
+    data: {
+      labels: evolLabels,
+      datasets: appData.niveles.map((n,i)=>({
+        label: n + '% CHV',
+        data: EDADES.map(e=>{
+          const s = calcStats(appData.compresion[n][e], 3);
+          return s ? s.media : null;
+        }),
+        borderColor: palette[i % palette.length],
+        backgroundColor: palette[i % palette.length],
+        borderWidth: 2, pointRadius: 5, tension: 0.2, fill: false
+      }))
+    },
+    options: {
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        y: { title: {display:true, text:'MPa'} },
+        x: { title: {display:true, text:'Edad de curado'} }
+      }
+    }
+  };
+  const imgEvolComp = await renderChartToImage(chartEvolCompConfig, 560, 320);
+  const imgEvolH = CW * 320/560;
+  checkPage(imgEvolH + 10);
+  setFont('italic', 9, GRAY);
+  doc.text(`Figura ${figOffset+1}. Evolución de la resistencia a compresión — todas las mezclas`, ML, y);
+  y += 4;
+  doc.addImage(imgEvolComp, 'PNG', ML, y, imgW, imgEvolH);
+  y += imgEvolH + 8;
+
+  // Tabla de evolucion compresion
+  subSectionTitle('Tabla de evolución — Compresión (MPa)');
+  const evolCompColW = [24, ...EDADES.map(()=>Math.floor((CW-24)/EDADES.length))];
+  const evolCompHeaders = ['Mezcla', ...EDADES.map(e=>e+'d')];
+  const evolCompRows = appData.niveles.map(n => ({
+    _patron: n === 0,
+    cells: [
+      {text: n + '%', bold: n===0},
+      ...EDADES.map(e => {
+        const s = calcStats(appData.compresion[n][e], 3);
+        return {text: s ? s.media.toFixed(2) : '-'};
+      })
+    ]
+  }));
+  drawTable(evolCompHeaders, evolCompRows, evolCompColW);
+
+  // Chart: Evolucion flexion
+  subSectionTitle('Evolución del módulo de ruptura (7, 14 y 28 días)');
+  const chartEvolFlexConfig = {
+    type: 'line',
+    data: {
+      labels: evolLabels,
+      datasets: appData.niveles.map((n,i)=>({
+        label: n + '% CHV',
+        data: EDADES.map(e=>{
+          const s = calcStats(appData.flexion[n][e], 2);
+          return s ? s.media : null;
+        }),
+        borderColor: palette[i % palette.length],
+        backgroundColor: palette[i % palette.length],
+        borderWidth: 2, pointRadius: 5, tension: 0.2, fill: false
+      }))
+    },
+    options: {
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        y: { title: {display:true, text:'MPa'} },
+        x: { title: {display:true, text:'Edad de curado'} }
+      }
+    }
+  };
+  const imgEvolFlex = await renderChartToImage(chartEvolFlexConfig, 560, 320);
+  checkPage(imgEvolH + 10);
+  setFont('italic', 9, GRAY);
+  doc.text(`Figura ${figOffset+2}. Evolución del módulo de ruptura — todas las mezclas`, ML, y);
+  y += 4;
+  doc.addImage(imgEvolFlex, 'PNG', ML, y, imgW, imgEvolH);
+  y += imgEvolH + 8;
+
+  // Tabla de evolucion flexion
+  subSectionTitle('Tabla de evolución — Flexión (MPa)');
+  const evolFlexColW = [24, ...EDADES.map(()=>Math.floor((CW-24)/EDADES.length))];
+  const evolFlexHeaders = ['Mezcla', ...EDADES.map(e=>e+'d')];
+  const evolFlexRows = appData.niveles.map(n => ({
+    _patron: n === 0,
+    cells: [
+      {text: n + '%', bold: n===0},
+      ...EDADES.map(e => {
+        const s = calcStats(appData.flexion[n][e], 2);
+        return {text: s ? s.media.toFixed(2) : '-'};
+      })
+    ]
+  }));
+  drawTable(evolFlexHeaders, evolFlexRows, evolFlexColW);
+
+  // ========== EFICIENCIA ==========
+  sectionTitle('4. Eficiencia de aprovechamiento CHV');
+
+  const eff = appData.eficiencia || {};
+  if(eff.biomasa !== null && eff.biomasa !== undefined && eff.ceniza !== null && eff.ceniza !== undefined){
+    const efPct = eff.eficiencia;
+    const clasificacion = efPct >= 15 ? 'Alta' : (efPct >= 8 ? 'Moderada' : 'Baja');
+    const relacion = (eff.biomasa / eff.ceniza).toFixed(2);
+
+    paragraph(`Se evaluó la eficiencia de conversión de biomasa seca de Hydrilla verticillata a ceniza utilizable como material puzolánico. La clasificación se basa en los rangos reportados en la literatura para cenizas de macrófitas acuáticas (alta ≥ 15%, moderada 8–15%, baja < 8%).`);
+
+    const effColW = [CW/4, CW/4, CW/4, CW/4];
+    const effHeaders = ['Biomasa seca (kg)','Ceniza (kg)','Eficiencia (%)','Clasificación'];
+    const effRows = [{
+      cells: [
+        {text: String(eff.biomasa)},
+        {text: String(eff.ceniza)},
+        {text: efPct.toFixed(2) + '%', bold: true},
+        {text: clasificacion, bold: true,
+         color: clasificacion === 'Alta' ? GREEN : (clasificacion === 'Moderada' ? GOLD : RED)}
+      ]
+    }];
+    drawTable(effHeaders, effRows, effColW);
+
+    paragraph(`Relación de aprovechamiento: se requieren aproximadamente ${relacion} kg de biomasa seca por cada kilogramo de ceniza obtenida.`);
+  } else {
+    paragraph('No se ingresaron datos de eficiencia de aprovechamiento.');
+  }
+
+  // ========== RESUMEN Y CONCLUSIONES ==========
+  sectionTitle('5. Resumen de resultados');
+
+  const compMax28 = compStats28All.reduce((best,c)=> c.media > best.media ? c : best, compStats28All[0]);
+  const flexMax28 = flexStats28All.reduce((best,c)=> c.media > best.media ? c : best, flexStats28All[0]);
+  const media0Comp28 = compStats28All.find(s=>s.nivel===0).media;
+  const media0Flex28 = flexStats28All.find(s=>s.nivel===0).media;
+  const deltaComp28 = ((compMax28.media - media0Comp28)/media0Comp28)*100;
+  const deltaFlex28 = ((flexMax28.media - media0Flex28)/media0Flex28)*100;
+
+  const cumplen = compStats28All.filter(s => getEstado(s.media) === 'CUMPLE');
+
+  subSectionTitle('Dosis óptima de sustitución');
+
+  y += 2;
+  checkPage(40);
+  doc.setFillColor(240, 243, 248);
+  doc.roundedRect(ML, y - 4, CW, 34, 3, 3, 'F');
+  doc.setDrawColor(...NAVY);
+  doc.setLineWidth(0.8);
+  doc.roundedRect(ML, y - 4, CW, 34, 3, 3, 'S');
+
+  setFont('bold', 12, NAVY);
+  doc.text('Dosis óptima de compresión (28 días):', ML + 6, y + 4);
+  setFont('bold', 14, GOLD);
+  doc.text(`${compMax28.nivel}% CHV  →  ${compMax28.media.toFixed(2)} MPa`, ML + CW/2 + 10, y + 4);
+
+  setFont('bold', 12, NAVY);
+  doc.text('Dosis óptima de flexión (28 días):', ML + 6, y + 18);
+  setFont('bold', 14, GOLD);
+  doc.text(`${flexMax28.nivel}% CHV  →  ${flexMax28.media.toFixed(2)} MPa`, ML + CW/2 + 10, y + 18);
+  y += 40;
+
+  subSectionTitle('Hallazgos principales');
+
+  const findings = [
+    `La mezcla con ${compMax28.nivel}% de sustitución alcanzó la mayor resistencia a compresión a 28 días (${compMax28.media.toFixed(2)} MPa), representando una variación de ${deltaComp28>=0?'+':''}${deltaComp28.toFixed(2)}% respecto al patrón.`,
+    `En flexión, la mezcla con ${flexMax28.nivel}% de sustitución obtuvo el mayor módulo de ruptura a 28 días (${flexMax28.media.toFixed(2)} MPa), con una variación de ${deltaFlex28>=0?'+':''}${deltaFlex28.toFixed(2)}% respecto al patrón.`,
+    `De las ${appData.niveles.length} mezclas evaluadas, ${cumplen.length} cumpl${cumplen.length===1?'e':'en'} con la resistencia de diseño f'c = 28 MPa a 28 días: ${cumplen.map(s=>s.nivel+'%').join(', ')}.`
+  ];
+
+  findings.forEach((f, i) => {
+    setFont('bold', 10, NAVY);
+    checkPage(8);
+    doc.text(`${i+1}.`, ML, y);
+    setFont('normal', 10, BLACK);
+    const lines = doc.splitTextToSize(f, CW - 10);
+    lines.forEach((line, li) => {
+      checkPage(6);
+      doc.text(line, ML + 8, y);
+      y += 5;
+    });
+    y += 3;
+  });
+
+  // Tabla resumen final 28 dias compresion
+  subSectionTitle('Tabla resumen — Compresión a 28 días');
+  const resColW = [22, 28, 22, 22, 28, 28];
+  const resTotalW = resColW.reduce((a,b)=>a+b,0);
+  const resScale = CW / resTotalW;
+  const resCols = resColW.map(w => w * resScale);
+  const resHeaders = ['Mezcla','Media (MPa)','Desv.','CV%','Δ Patrón','Estado'];
+  const resRows = compStats28All.map(s => {
+    const cv = (s.desv/s.media)*100;
+    const delta = ((s.media - media0Comp28)/media0Comp28)*100;
+    const estado = getEstado(s.media);
+    return {
+      _patron: s.nivel === 0,
+      cells: [
+        {text: s.nivel + '%', bold: s.nivel===0},
+        {text: s.media.toFixed(2), bold: true},
+        {text: s.desv.toFixed(2)},
+        {text: cv.toFixed(1) + '%', color: cv > 10 ? RED : BLACK},
+        {text: (delta>=0?'+':'') + delta.toFixed(2) + '%', color: delta >= 0 ? GREEN : RED},
+        {text: estado, color: estado === 'CUMPLE' ? GREEN : (estado === 'LIMITE' ? GOLD : RED)}
+      ]
+    };
+  });
+  drawTable(resHeaders, resRows, resCols);
+
+  subSectionTitle('Observaciones finales');
+
+  const patronComp28 = media0Comp28.toFixed(2);
+  const patronFlex28 = media0Flex28.toFixed(2);
+  const allCumplen = compStats28All.every(s => getEstado(s.media) === 'CUMPLE');
+
+  let obsText = `El patrón (0% CHV) alcanzó ${patronComp28} MPa en compresión y ${patronFlex28} MPa en flexión a 28 días. `;
+  if(allCumplen){
+    obsText += 'Todas las mezclas evaluadas cumplen con la resistencia de diseño, lo que indica que los niveles de sustitución estudiados son viables desde el punto de vista mecánico.';
+  } else {
+    const noCumplen = compStats28All.filter(s => getEstado(s.media) === 'NO CUMPLE');
+    if(noCumplen.length > 0){
+      obsText += `Las mezclas con ${noCumplen.map(s=>s.nivel+'%').join(', ')} no alcanzaron la resistencia de diseño a 28 días, por lo que se desaconsejan para aplicaciones estructurales.`;
+    }
+  }
+  paragraph(obsText);
+
+  if(compMax28.nivel !== flexMax28.nivel){
+    paragraph(`Nota: la dosis óptima de compresión (${compMax28.nivel}%) difiere de la de flexión (${flexMax28.nivel}%). Se recomienda seleccionar el nivel de sustitución según el requerimiento mecánico predominante del elemento estructural.`);
+  }
+
+  // Footer ultima pagina
+  addFooter();
+
+  doc.save('informe_CHV_resultados.pdf');
 }
 
 /* ============================================================
