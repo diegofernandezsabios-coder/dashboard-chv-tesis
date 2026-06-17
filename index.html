@@ -1488,6 +1488,8 @@ async function exportPDF(){
     return;
   }
 
+  try {
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'letter' });
   const W = doc.internal.pageSize.getWidth();
@@ -1616,17 +1618,12 @@ async function exportPDF(){
 
   async function renderChartToImage(chartConfig, width, height){
     const offscreen = document.createElement('canvas');
-    offscreen.width = width * 2;
-    offscreen.height = height * 2;
-    offscreen.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+    offscreen.width = width;
+    offscreen.height = height;
+    offscreen.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:'+width+'px;height:'+height+'px;';
     document.body.appendChild(offscreen);
 
-    const ctx = offscreen.getContext('2d');
-    ctx.scale(2, 2);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, width, height);
-
-    const chart = new Chart(ctx, {
+    const chart = new Chart(offscreen.getContext('2d'), {
       ...chartConfig,
       options: {
         ...chartConfig.options,
@@ -1636,7 +1633,7 @@ async function exportPDF(){
       }
     });
 
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 200));
     const img = offscreen.toDataURL('image/png', 1.0);
     chart.destroy();
     document.body.removeChild(offscreen);
@@ -1725,9 +1722,9 @@ async function exportPDF(){
         _patron: s.nivel === 0,
         cells: [
           {text: s.nivel + '%', bold: s.nivel===0},
-          {text: r[0].toFixed ? Number(r[0]).toFixed(2) : r[0]},
-          {text: r[1].toFixed ? Number(r[1]).toFixed(2) : r[1]},
-          {text: r[2].toFixed ? Number(r[2]).toFixed(2) : r[2]},
+          {text: Number(r[0]).toFixed(2)},
+          {text: Number(r[1]).toFixed(2)},
+          {text: Number(r[2]).toFixed(2)},
           {text: s.media.toFixed(2), bold: true},
           {text: s.desv.toFixed(2)},
           {text: cv.toFixed(1) + '%', color: cv > 10 ? RED : BLACK},
@@ -2169,6 +2166,11 @@ async function exportPDF(){
   addFooter();
 
   doc.save('informe_CHV_resultados.pdf');
+
+  } catch(err) {
+    console.error('Error generando PDF:', err);
+    alert('Error al generar el PDF: ' + err.message);
+  }
 }
 
 /* ============================================================
