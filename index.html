@@ -2018,7 +2018,7 @@ async function exportPDF(){
   doc.text('CHV', midX + 8 + doc.getTextWidth(`${fBest.nivel}% `), bLine);
 
   bLine += 8;
-  sans('bold', 11, NAVY);
+  sans('bold', 11, [20,40,75]);
   doc.text(`${cBest.media.toFixed(2)} MPa`, bx+8, bLine);
   doc.text(`${fBest.media.toFixed(2)} MPa`, midX+8, bLine);
 
